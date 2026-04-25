@@ -15,6 +15,8 @@ use reqwest::header::HeaderValue;
 use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::sync::RwLock;
+#[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+use std::time::Duration;
 
 /// Set this to add a suffix to the User-Agent string.
 ///
@@ -35,6 +37,8 @@ pub static USER_AGENT_SUFFIX: LazyLock<Mutex<Option<String>>> = LazyLock::new(||
 pub const DEFAULT_ORIGINATOR: &str = "codex_cli_rs";
 pub const CODEX_INTERNAL_ORIGINATOR_OVERRIDE_ENV_VAR: &str = "CODEX_INTERNAL_ORIGINATOR_OVERRIDE";
 pub const RESIDENCY_HEADER_NAME: &str = "x-openai-internal-codex-residency";
+#[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+const DEFAULT_TCP_USER_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub use codex_config::ResidencyRequirement;
 
@@ -225,6 +229,12 @@ pub fn try_build_reqwest_client() -> Result<reqwest::Client, BuildCustomCaTransp
         // Set UA via dedicated helper to avoid header validation pitfalls
         .user_agent(ua)
         .default_headers(default_headers());
+    #[cfg(any(target_os = "android", target_os = "fuchsia", target_os = "linux"))]
+    {
+        // reqwest's Linux-family TCP user timeout is too short for long-running
+        // unary calls such as remote compaction on large sessions.
+        builder = builder.tcp_user_timeout(DEFAULT_TCP_USER_TIMEOUT);
+    }
     if is_sandboxed() {
         builder = builder.no_proxy();
     }
